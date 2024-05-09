@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "blufi_init.h": "c",
+        "cstdint": "c"
+    }
+}
