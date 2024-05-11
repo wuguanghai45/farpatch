@@ -1,6 +1,10 @@
 {
     "files.associations": {
         "blufi_init.h": "c",
-        "cstdint": "c"
-    }
+        "cstdint": "c",
+        "farpatch_adc.h": "c",
+        "sdkconfig.h": "c",
+        "locale": "c"
+    },
+    "idf.adapterTargetName": "esp32s3"
 }

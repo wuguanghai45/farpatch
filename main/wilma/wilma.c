@@ -315,7 +315,8 @@ static void bluefi_event_callback(esp_blufi_cb_event_t event, esp_blufi_cb_param
         so disconnect wifi before connection.
         */
         esp_wifi_disconnect();
-        example_wifi_connect();
+		wilma_add_ssid((char *)sta_config.sta.ssid, (char *)sta_config.sta.password);
+        // example_wifi_connect();
         break;
     case ESP_BLUFI_EVENT_REQ_DISCONNECT_FROM_AP:
         BLUFI_INFO("BLUFI requset wifi disconnect from AP\n");
@@ -599,7 +600,8 @@ int wilma_add_ssid(const char *ssid, const char *password)
 		// Start connecting to the first entry in the list
 		if (ESP_OK == connect_to_station_index(0)) {
 			xEventGroupSetBits(WILMA_EVENT_GROUP, WILMA_CONNECTING_BIT);
-			ESP_ERROR_CHECK(esp_wifi_connect());
+			// ESP_ERROR_CHECK(esp_wifi_connect());
+			example_wifi_reconnect();
 		}
 		return ESP_OK;
 	}
@@ -970,7 +972,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 		case WIFI_EVENT_STA_START:
 			ESP_LOGD(TAG, "WIFI_EVENT_STA_START (doing nothing)");
 			// ESP_ERROR_CHECK(esp_wifi_connect());
-			example_wifi_connect();
+			// example_wifi_connect();
 			break;
 
 		case WIFI_EVENT_AP_START:
@@ -1011,7 +1013,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 
 			if (xEventGroupGetBits(WILMA_EVENT_GROUP) & WILMA_RETRY_CONNECTION_BIT) {
 				xEventGroupClearBits(WILMA_EVENT_GROUP, WILMA_RETRY_CONNECTION_BIT);
-				ESP_ERROR_CHECK(esp_wifi_connect());
+				// ESP_ERROR_CHECK(esp_wifi_connect());
+				example_wifi_reconnect();
 			}
 
 			break;
@@ -1037,7 +1040,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 				wilma_reason_to_str(event->reason));
 			if (xEventGroupGetBits(WILMA_EVENT_GROUP) & WILMA_RETRY_CONNECTION_BIT) {
 				xEventGroupClearBits(WILMA_EVENT_GROUP, WILMA_RETRY_CONNECTION_BIT);
-				ESP_ERROR_CHECK(esp_wifi_connect());
+				// ESP_ERROR_CHECK(esp_wifi_connect());
+				example_wifi_reconnect();
 			} else if (xEventGroupGetBits(WILMA_EVENT_GROUP) & WILMA_DISCONNECTED_BIT) {
 				ESP_LOGD(TAG, "WIFI_EVENT_STA_DISCONNECTED: ignoring because we were told to disconnect");
 				xEventGroupClearBits(WILMA_EVENT_GROUP, WILMA_DISCONNECTED_BIT);
@@ -1048,7 +1052,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 					break;
 				}
 				xEventGroupSetBits(WILMA_EVENT_GROUP, WILMA_CONNECTING_BIT);
-				ESP_ERROR_CHECK(esp_wifi_connect());
+				// ESP_ERROR_CHECK(esp_wifi_connect());
+				example_wifi_reconnect();
 				break;
 			} else if (xEventGroupGetBits(WILMA_EVENT_GROUP) & WILMA_SCAN_BIT) {
 				// Don't retry to connect to the AP if we're in the middle of a scan
@@ -1057,21 +1062,21 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 			} else if (WILMA_RETRY_NUM < RETRIES_BEFORE_CONTINUING) {
 				WILMA_RETRY_NUM++;
 				ESP_LOGD(TAG, "Trying again to connect to AP (try %d/%d)", WILMA_RETRY_NUM, RETRIES_BEFORE_CONTINUING);
-
-				esp_err_t err = esp_wifi_connect();
-				switch (err) {
-				case ESP_OK:
-					break;
-				case ESP_ERR_WIFI_NOT_STARTED:
-					if (event->reason == WIFI_REASON_ASSOC_LEAVE) {
-						ESP_LOGD(TAG, "wifi not started, we're probably rebooting");
-						break;
-					}
-					/* Fall through */
-				default:
-					ESP_ERROR_CHECK(err);
-					break;
-				}
+				example_wifi_reconnect();
+				// esp_err_t err = esp_wifi_connect();
+				// switch (err) {
+				// case ESP_OK:
+				// 	break;
+				// case ESP_ERR_WIFI_NOT_STARTED:
+				// 	if (event->reason == WIFI_REASON_ASSOC_LEAVE) {
+				// 		ESP_LOGD(TAG, "wifi not started, we're probably rebooting");
+				// 		break;
+				// 	}
+				// 	/* Fall through */
+				// default:
+				// 	// ESP_ERROR_CHECK(err);
+				// 	break;
+				// }
 			} else {
 				xEventGroupSetBits(WILMA_EVENT_GROUP, WILMA_FAIL_BIT);
 				xEventGroupClearBits(WILMA_EVENT_GROUP, WILMA_CONNECTING_BIT);
@@ -1084,7 +1089,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 					ESP_LOGD(TAG, "Failed  to connect. Moving on to next AP...");
 					if (ESP_OK != connect_to_station_index(WILMA_CONNECTION_INDEX + 1)) {
 						xEventGroupSetBits(WILMA_EVENT_GROUP, WILMA_CONNECTING_BIT);
-						ESP_ERROR_CHECK(esp_wifi_connect());
+						// ESP_ERROR_CHECK(esp_wifi_connect());
+						example_wifi_connect();
 						WILMA_RETRY_NUM = 0;
 					}
 				} else {
@@ -1116,7 +1122,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 
 			// If we were connected before the scan, reconnect to the AP
 			if (xEventGroupGetBits(WILMA_EVENT_GROUP) & (WILMA_CONNECTED_BIT | WILMA_CONNECTING_BIT)) {
-				ESP_ERROR_CHECK(esp_wifi_connect());
+				// ESP_ERROR_CHECK(esp_wifi_connect());
+				example_wifi_connect();
 			} else if (xEventGroupGetBits(WILMA_EVENT_GROUP) & WILMA_CONNECT_AFTER_SCAN_BIT) {
 				xEventGroupClearBits(WILMA_EVENT_GROUP, WILMA_CONNECT_AFTER_SCAN_BIT);
 				send_message(WM_ORDER_CONNECT_STA, NULL);
@@ -1542,7 +1549,8 @@ static void wilma_thread(void *data)
 			}
 			// Initiate the connection, but only if we're not currently scanning.
 			if (!(xEventGroupGetBits(WILMA_EVENT_GROUP) & (WILMA_SCAN_BIT | WILMA_CONNECTING_BIT))) {
-				ESP_ERROR_CHECK(esp_wifi_connect());
+				// ESP_ERROR_CHECK(esp_wifi_connect());
+				example_wifi_connect();
 			} else {
 				// we're currently connecting, but the configuration has been updated. Retry the
 				// connection after it fails.
