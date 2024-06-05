@@ -23,6 +23,7 @@
 #include "esp_attr.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
+#include <dirent.h>
 
 const static char http_cache_control_hdr[] = "Cache-Control";
 const static char http_cache_control_no_cache[] = "no-store, no-cache, must-revalidate, max-age=0";
@@ -153,6 +154,82 @@ static const char *ESP_RESET_DESCRIPTIONS[] = {
 	"Reset by USB peripheral",
 	"Reset by JTAG",
 };
+
+esp_err_t list_files_handler(httpd_req_t *req) {
+    char filepath[100];
+    snprintf(filepath, sizeof(filepath), "/sdcard%s", req->uri + 5); // Skip "/list"
+
+    DIR *dir = opendir(filepath);
+    if (!dir) {
+        httpd_resp_send_404(req);
+        ESP_LOGE(TAG, "Directory not found: %s", filepath);
+        return ESP_FAIL;
+    }
+
+    struct dirent *entry;
+    char buffer[1024];
+
+    // Send HTML header
+    const char *html_header = "<html><body><h1>File List</h1><ul>";
+    httpd_resp_send_chunk(req, html_header, strlen(html_header));
+
+    while ((entry = readdir(dir)) != NULL) {
+        int len = snprintf(buffer, sizeof(buffer),
+                           "<li><a href=\"/download/%s\">%s</a></li>",
+                           entry->d_name, entry->d_name);
+        httpd_resp_send_chunk(req, buffer, len);
+    }
+    closedir(dir);
+
+    // Send HTML footer
+    const char *html_footer = "</ul></body></html>";
+    httpd_resp_send_chunk(req, html_footer, strlen(html_footer));
+
+    // Signal end of response
+    httpd_resp_send_chunk(req, NULL, 0);
+
+    return ESP_OK;
+}
+
+esp_err_t download_handler(httpd_req_t *req) {
+    char filepath[100];
+    snprintf(filepath, sizeof(filepath), "/sdcard%s", req->uri + 9); // Skip "/download"
+    
+    // Extract filename from the URI
+    const char *filename = strrchr(req->uri, '/');
+    if (filename) {
+        filename++; // Skip the '/'
+    } else {
+        httpd_resp_send_404(req);
+        ESP_LOGE(TAG, "Invalid file path: %s", req->uri);
+        return ESP_FAIL;
+    }
+    
+    FILE *file = fopen(filepath, "r");
+    if (!file) {
+        httpd_resp_send_404(req);
+        ESP_LOGE(TAG, "File not found: %s", filepath);
+        return ESP_FAIL;
+    }
+
+    // Set Content-Disposition header
+    char content_disposition[100];
+    snprintf(content_disposition, sizeof(content_disposition), "attachment; filename=\"%s\"", filename);
+    httpd_resp_set_hdr(req, "Content-Disposition", content_disposition);
+
+    // Set Content-Type header (optional, for better browser support)
+    httpd_resp_set_type(req, "application/octet-stream");
+
+    char buffer[1024];
+    size_t read_bytes;
+    while ((read_bytes = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        httpd_resp_send_chunk(req, buffer, read_bytes);
+    }
+    httpd_resp_send_chunk(req, NULL, 0);  // Signal end of file transfer
+    fclose(file);
+
+    return ESP_OK;
+}
 
 static esp_err_t cgi_system_status_header(httpd_req_t *req)
 {
@@ -482,7 +559,18 @@ static const httpd_uri_t basic_handlers[] = {
 		.handler = cgi_redirect,
 		.user_ctx = (void *)"/wifi.html",
 	},
-
+	{
+		.uri       = "/download/*",
+		.method    = HTTP_GET,
+		.handler   = download_handler,
+		.user_ctx  = NULL
+	},
+    {
+        .uri       = "/list/*",
+        .method    = HTTP_GET,
+        .handler   = list_files_handler,
+        .user_ctx  = NULL
+    },
 	// OTA updates
 	{
 		.uri = "/flash",

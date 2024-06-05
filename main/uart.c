@@ -20,6 +20,7 @@
 #include "http.h"
 #include "tinyprintf.h"
 #include "uart.h"
+#include "sd_card.h"
 
 static struct sockaddr_in udp_peer_addr;
 static int tcp_serv_sock;
@@ -246,6 +247,8 @@ static void IRAM_ATTR uart_hw_task(void *parameters)
 			}
 
 			uart_rx_count += count;
+			// ESP_LOGI(__func__, "uart read %s bytes count: %d", buf, count);
+			save_to_file(buf, count);
 			http_term_broadcast_data(buf, count);
 
 			if (tcp_client_sock) {
@@ -288,7 +291,7 @@ void uart_init(void)
 	ESP_LOGI(__func__, "configuring UART%d for target", TARGET_UART_IDX);
 
 	// Start UART tasks
-	xTaskCreate(uart_hw_task, "uart_hw_task", 3072, NULL, 1, NULL);
+	xTaskCreate(uart_hw_task, "uart_hw_task", 1024 * 5, NULL, 1, NULL);
 	xTaskCreate(uart_net_task, "uart_net_task", 6 * 1024, NULL, 1, NULL);
 #endif
 }

@@ -66,6 +66,8 @@
 
 #include "ota-tftp.h"
 
+#include "sd_card.h"
+
 #define TAG "farpatch"
 
 nvs_handle h_nvs_conf;
@@ -476,6 +478,11 @@ void app_main(void)
 	ESP_ERROR_CHECK(ret);
 
 	ESP_ERROR_CHECK(nvs_open("config", NVS_READWRITE, &h_nvs_conf));
+
+	ret = init_sd_card();
+    if (ret != ESP_OK) {
+       ESP_LOGE(TAG, "SD card initialization failed");
+    }
 
 	// TODO: ADC task is currently broken. It corrupts something in RAM which
 	// manifests itself as a problem with NVS.
