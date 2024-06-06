@@ -20,9 +20,7 @@
 
 #define EXAMPLE_MAX_CHAR_SIZE 64
 #define MOUNT_POINT "/sdcard"
-#define MAX_FILE_SIZE 50*1024*1024 // 100M
-#define MAX_FILE_COUNT 200
-#define MAX_SAVE_FILE 50
+#define MAX_FILE_SIZE 20*1024*1024 // 20M
 
 #define CONFIG_SD_CARD_PIN_CLK 18
 #define CONFIG_SD_CARD_PIN_CMD 17
@@ -36,8 +34,24 @@ static const char *TAG = "sd_card";
 static u_int8_t file_counter = 0;
 static sdmmc_card_t *card;
 static int cache_log_file_size = 0;
+static int max_save_file_count = 30;
+static int max_file_count = 10000;
 
 static bool sd_card_init = false;
+
+
+void calculate_file_storage_capacity(uint32_t total_space_kb) {
+    // 计算可以存储的文件数量
+    uint32_t max_file_size_kb = MAX_FILE_SIZE / 1024;
+    uint32_t file_count = (total_space_kb * 4 / 5) / max_file_size_kb;
+    max_save_file_count = file_count;
+
+    max_file_count = file_count * 2;
+
+    // printf("Total SD card space: %d KB\n", total_space_kb);
+    // printf("Each file size: %d KB\n", max_file_size_kb);
+    ESP_LOGI(TAG, "Maximum number of files that can be stored: %lu max_file_count: %u \n", file_count, max_file_count);
+}
 
 static esp_err_t append_file(const char *path, uint8_t *data, size_t len)
 {
@@ -120,10 +134,10 @@ static void check_and_remove_file_count()
     char path[EXAMPLE_MAX_CHAR_SIZE];
     struct stat st;
     int delete_file_counter;
-    if(file_counter <= MAX_SAVE_FILE) {
-       delete_file_counter = file_counter + MAX_FILE_COUNT - MAX_SAVE_FILE;
+    if(file_counter <= max_save_file_count) {
+       delete_file_counter = file_counter + max_file_count - max_save_file_count;
     } else {
-       delete_file_counter = file_counter - MAX_SAVE_FILE - 1;
+       delete_file_counter = file_counter - max_save_file_count - 1;
     }
 
     snprintf(path, sizeof(path), MOUNT_POINT"/uart_%d.log", delete_file_counter);
@@ -251,6 +265,7 @@ esp_err_t init_sd_card()
         // 打印SD卡容量信息
         ESP_LOGI(TAG, "SD card total size: %lu KB", tot_sect / 2);
         ESP_LOGI(TAG, "SD card free space: %lu KB", fre_sect / 2);
+        calculate_file_storage_capacity(fre_sect / 2);
     }
 
     sd_card_init = true;
