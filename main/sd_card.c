@@ -178,6 +178,11 @@ void save_to_file(uint8_t *buf, size_t len)
     }
 }
 
+u_int8_t get_file_counter()
+{
+    return file_counter;
+}
+
 esp_err_t init_sd_card()
 {
     read_file_count();
@@ -230,6 +235,23 @@ esp_err_t init_sd_card()
     
     // 打印SD卡信息
     sdmmc_card_print_info(stdout, card);
+    // 获取文件系统信息
+    FATFS* fs;
+    DWORD fre_clust, fre_sect, tot_sect;
+
+    // 挂载文件系统
+    if (f_getfree("0:", &fre_clust, &fs) != FR_OK) {
+        ESP_LOGE(TAG, "Failed to get free clusters.");
+    } else {
+
+        // 计算总扇区和可用扇区
+        tot_sect = (fs->n_fatent - 2) * fs->csize;
+        fre_sect = fre_clust * fs->csize;
+
+        // 打印SD卡容量信息
+        ESP_LOGI(TAG, "SD card total size: %lu KB", tot_sect / 2);
+        ESP_LOGI(TAG, "SD card free space: %lu KB", fre_sect / 2);
+    }
 
     sd_card_init = true;
 

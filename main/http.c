@@ -19,6 +19,7 @@
 #include "driver/uart.h"
 #include "uart.h"
 #include "version.h"
+#include "sd_card.h"
 
 #include "esp_attr.h"
 #include "esp_ota_ops.h"
@@ -179,9 +180,15 @@ esp_err_t list_files_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
+	u_int8_t file_counter = get_file_counter();
+
     // Send HTML header
     const char *html_header = "<html><body><h1>File List</h1><ul>";
+
     httpd_resp_send_chunk(req, html_header, strlen(html_header));
+
+	snprintf(buffer, 1024, "<li><h1>current file index: %d</h1></li>", file_counter);
+	httpd_resp_send_chunk(req, buffer, strlen(buffer));
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) { // Only list regular files
