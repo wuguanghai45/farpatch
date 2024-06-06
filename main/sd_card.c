@@ -20,9 +20,9 @@
 
 #define EXAMPLE_MAX_CHAR_SIZE 64
 #define MOUNT_POINT "/sdcard"
-#define MAX_FILE_SIZE 100*1024*1024 // 100M
-#define MAX_FILE_COUNT 100
-#define MAX_SAVE_FILE 20
+#define MAX_FILE_SIZE 50*1024*1024 // 100M
+#define MAX_FILE_COUNT 200
+#define MAX_SAVE_FILE 50
 
 #define CONFIG_SD_CARD_PIN_CLK 18
 #define CONFIG_SD_CARD_PIN_CMD 17
@@ -136,7 +136,7 @@ static void check_and_remove_file_count()
 void save_to_file(uint8_t *buf, size_t len)
 {
     if(!sd_card_init) {
-        // ESP_LOGE(TAG, "SD card not initialized");
+        ESP_LOGE(TAG, "SD card not initialized");
         return;
     }
 
@@ -161,9 +161,10 @@ void save_to_file(uint8_t *buf, size_t len)
         file_counter = file_counter + 1;
         if(file_counter > 100) {
             file_counter = 0;
-            cache_log_file_size = 0;
         }
 
+        cache_log_file_size = 0;
+        write_file_count();
         check_and_remove_file_count();
         snprintf(path, sizeof(path), MOUNT_POINT"/uart_%d.log", file_counter);
     }
@@ -179,8 +180,9 @@ void save_to_file(uint8_t *buf, size_t len)
 
 esp_err_t init_sd_card()
 {
-    esp_err_t ret;
+    read_file_count();
 
+    esp_err_t ret;
     // 文件系统挂载配置
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = true,

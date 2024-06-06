@@ -24,6 +24,7 @@
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include <dirent.h>
+#include <sys/stat.h>
 
 const static char http_cache_control_hdr[] = "Cache-Control";
 const static char http_cache_control_no_cache[] = "no-store, no-cache, must-revalidate, max-age=0";
@@ -37,6 +38,9 @@ extern void platform_set_baud(uint32_t);
 static frogfs_fs_t *frog_fs;
 httpd_handle_t http_daemon;
 extern esp_err_t cgi_rtt_status(httpd_req_t *req);
+
+#define BUFFER_SIZE 8192 // 缓冲区大小适中，以适应堆栈空间限制
+#define FULLPATH_SIZE 512  // 增加缓冲区大小，确保足够大
 
 #define TAG "httpd"
 
@@ -167,17 +171,38 @@ esp_err_t list_files_handler(httpd_req_t *req) {
     }
 
     struct dirent *entry;
-    char buffer[1024];
+    char *buffer = malloc(1024);
+    if (!buffer) {
+        closedir(dir);
+        httpd_resp_send_500(req);
+        ESP_LOGE(TAG, "Failed to allocate memory for buffer");
+        return ESP_FAIL;
+    }
 
     // Send HTML header
     const char *html_header = "<html><body><h1>File List</h1><ul>";
     httpd_resp_send_chunk(req, html_header, strlen(html_header));
 
     while ((entry = readdir(dir)) != NULL) {
-        int len = snprintf(buffer, sizeof(buffer),
-                           "<li><a href=\"/download/%s\">%s</a></li>",
-                           entry->d_name, entry->d_name);
-        httpd_resp_send_chunk(req, buffer, len);
+        if (entry->d_type == DT_REG) { // Only list regular files
+            struct stat file_stat;
+            char fullpath[FULLPATH_SIZE];
+            int ret = snprintf(fullpath, sizeof(fullpath), "%s/%s", filepath, entry->d_name);
+            if (ret >= sizeof(fullpath)) {
+                ESP_LOGE(TAG, "Fullpath buffer overflow for file: %s", entry->d_name);
+                continue;
+            }
+            if (stat(fullpath, &file_stat) == 0) {
+                int len = snprintf(buffer, 1024,
+                                   "<li><a href=\"/download/%s\">%s</a> (%ld bytes)</li>",
+                                   entry->d_name, entry->d_name, file_stat.st_size);
+                if (len >= 1024) {
+                    ESP_LOGE(TAG, "Buffer overflow when listing file: %s", entry->d_name);
+                    continue;
+                }
+                httpd_resp_send_chunk(req, buffer, len);
+            }
+        }
     }
     closedir(dir);
 
@@ -187,6 +212,8 @@ esp_err_t list_files_handler(httpd_req_t *req) {
 
     // Signal end of response
     httpd_resp_send_chunk(req, NULL, 0);
+
+    free(buffer);
 
     return ESP_OK;
 }
@@ -220,13 +247,36 @@ esp_err_t download_handler(httpd_req_t *req) {
     // Set Content-Type header (optional, for better browser support)
     httpd_resp_set_type(req, "application/octet-stream");
 
-    char buffer[1024];
-    size_t read_bytes;
-    while ((read_bytes = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        httpd_resp_send_chunk(req, buffer, read_bytes);
+    char *buffer = malloc(BUFFER_SIZE);
+    if (!buffer) {
+        fclose(file);
+        httpd_resp_send_500(req);
+        ESP_LOGE(TAG, "Failed to allocate memory for buffer");
+        return ESP_FAIL;
     }
+
+    // Check file size
+    struct stat st;
+    if (stat(filepath, &st) != 0) {
+        ESP_LOGE(TAG, "Failed to get file size: %s", filepath);
+    } else {
+        ESP_LOGI(TAG, "File size: %ld bytes", st.st_size);
+    }
+
+    size_t read_bytes;
+    while ((read_bytes = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
+        // ESP_LOGI(TAG, "Sending %d bytes", read_bytes);
+        if (httpd_resp_send_chunk(req, buffer, read_bytes) != ESP_OK) {
+            fclose(file);
+            free(buffer);
+            ESP_LOGE(TAG, "Failed to send file chunk: %s", filepath);
+            return ESP_FAIL;
+        }
+    }
+
     httpd_resp_send_chunk(req, NULL, 0);  // Signal end of file transfer
     fclose(file);
+    free(buffer);
 
     return ESP_OK;
 }
