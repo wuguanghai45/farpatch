@@ -1,26 +1,20 @@
-/* SD card and FAT filesystem example.
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-
-// This example uses SDMMC peripheral to communicate with SD card.
-
 #include <string.h>
 #include <sys/unistd.h>
 #include <sys/stat.h>
-#include "esp_vfs_fat.h"
-#include "sdmmc_cmd.h"
-#include "driver/sdmmc_host.h"
-#include "sd_pwr_ctrl_by_on_chip_ldo.h"
-#include "nvs_flash.h"
-#include "nvs.h"
+#include <esp_vfs_fat.h>
+#include <sdmmc_cmd.h>
+#include <driver/sdmmc_host.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/queue.h>
+#include <sd_pwr_ctrl_by_on_chip_ldo.h>
+#include <nvs_flash.h>
+#include <nvs.h>
 
 #define EXAMPLE_MAX_CHAR_SIZE 64
 #define MOUNT_POINT "/sdcard"
 #define MAX_FILE_SIZE (20 * 1024 * 1024) // 20MB
+#define QUEUE_SIZE 10
 
 #define CONFIG_SD_CARD_PIN_CLK 18
 #define CONFIG_SD_CARD_PIN_CMD 17
@@ -33,11 +27,16 @@ static const char *TAG = "sd_card";
 
 static uint8_t file_counter = 0;
 static sdmmc_card_t *card;
-static int cache_log_file_size = 0;
 static int max_save_file_count = 30;
 static int max_file_count = 10000;
 
 static bool sd_card_init = false;
+static QueueHandle_t file_queue;
+
+typedef struct {
+    uint8_t *data;
+    size_t len;
+} file_write_msg_t;
 
 void calculate_file_storage_capacity(uint32_t total_space_kb) {
     // 计算可以存储的文件数量
@@ -49,21 +48,7 @@ void calculate_file_storage_capacity(uint32_t total_space_kb) {
     ESP_LOGI(TAG, "最大存储文件数量: %lu, 最大文件数: %u", file_count, max_file_count);
 }
 
-static esp_err_t append_file(const char *path, uint8_t *data, size_t len) {
-    FILE *f = fopen(path, "a");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "打开文件失败: %s", path);
-        return ESP_FAIL;
-    }
-    size_t written = fwrite(data, 1, len, f);
-    if (written != len) {
-        ESP_LOGE(TAG, "写入数据到文件失败: %s", path);
-        fclose(f);
-        return ESP_FAIL;
-    }
-    fclose(f);
-    return ESP_OK;
-}
+
 
 static esp_err_t read_file_count() {
     nvs_handle_t nvs_handle;
@@ -141,40 +126,78 @@ void save_to_file(uint8_t *buf, size_t len) {
         return;
     }
 
-    char path[EXAMPLE_MAX_CHAR_SIZE];
-    snprintf(path, sizeof(path), MOUNT_POINT"/uart_%d.log", file_counter);
-
-    struct stat st;
-
-    if (cache_log_file_size == 0) {
-        if (stat(path, &st) == 0) {
-            cache_log_file_size = st.st_size;
-        } else {
-            cache_log_file_size = 0;
-        }
+    uint8_t *data_copy = (uint8_t *)malloc(len);
+    if (data_copy == NULL) {
+        ESP_LOGE(TAG, "内存分配失败");
+        return; // 如果内存分配失败，记录错误日志并返回
     }
 
-    if (cache_log_file_size > MAX_FILE_SIZE) {
-        file_counter++;
-        if (file_counter > 100) {
-            file_counter = 0;
-        }
-        cache_log_file_size = 0;
-        write_file_count();
-        check_and_remove_file_count();
-        snprintf(path, sizeof(path), MOUNT_POINT"/uart_%d.log", file_counter);
-    }
+    memcpy(data_copy, buf, len); // 将数据复制到新分配的内存中
 
-    esp_err_t ret = append_file(path, buf, len);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "写入文件失败: %s", path);
-    } else {
-        cache_log_file_size += len;
+    file_write_msg_t msg;
+    msg.data = data_copy;
+    msg.len = len;
+
+    if (xQueueSend(file_queue, &msg, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGE(TAG, "无法将数据放入队列");
+        free(data_copy); // 如果发送失败，释放分配的内存
     }
 }
 
 uint8_t get_file_counter() {
     return file_counter;
+}
+
+static void file_write_task(void *pvParameters) {
+    file_write_msg_t msg;
+    char path[EXAMPLE_MAX_CHAR_SIZE];
+    struct stat st;
+    static FILE *f = NULL;
+    static size_t cache_log_file_size = 0;
+
+    while (1) {
+        if (xQueueReceive(file_queue, &msg, portMAX_DELAY)) {
+            // 生成文件路径
+            snprintf(path, sizeof(path), MOUNT_POINT "/uart_%d.log", file_counter);
+
+            if (cache_log_file_size == 0) {
+                if (stat(path, &st) == 0) {
+                    cache_log_file_size = st.st_size;
+                } else {
+                    cache_log_file_size = 0;
+                }
+            }
+
+            if (cache_log_file_size > MAX_FILE_SIZE) {
+                file_counter++;
+                if (file_counter > 100) {
+                    file_counter = 0;
+                }
+                cache_log_file_size = 0;
+                write_file_count();
+                check_and_remove_file_count();
+                snprintf(path, sizeof(path), MOUNT_POINT"/uart_%d.log", file_counter);
+            }
+
+            // 打开新文件
+            f = fopen(path, "a");
+            if (f == NULL) {
+                ESP_LOGE(TAG, "无法打开文件: %s", path);
+                continue;
+            }
+
+            // 写入数据
+            size_t written = fwrite(msg.data, 1, msg.len, f);
+            if (written != msg.len) {
+                ESP_LOGE(TAG, "写入数据到文件失败: %s", path);
+            } else {
+                cache_log_file_size += written;
+            }
+
+            free(msg.data);
+            fclose(f);
+        }
+    }
 }
 
 esp_err_t init_sd_card() {
@@ -231,5 +254,14 @@ esp_err_t init_sd_card() {
     }
 
     sd_card_init = true;
+
+    file_queue = xQueueCreate(QUEUE_SIZE, sizeof(file_write_msg_t));
+    if (file_queue == NULL) {
+        ESP_LOGE(TAG, "创建队列失败");
+        return ESP_FAIL;
+    }
+
+    xTaskCreate(file_write_task, "file_write_task", 1024 * 3, NULL, 5, NULL);
+
     return ESP_OK;
 }
