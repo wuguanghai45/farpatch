@@ -40,7 +40,7 @@ static frogfs_fs_t *frog_fs;
 httpd_handle_t http_daemon;
 extern esp_err_t cgi_rtt_status(httpd_req_t *req);
 
-#define BUFFER_SIZE 8192 // 缓冲区大小适中，以适应堆栈空间限制
+#define BUFFER_SIZE 1024*4 // 缓冲区大小适中，以适应堆栈空间限制
 #define FULLPATH_SIZE 512  // 增加缓冲区大小，确保足够大
 
 #define TAG "httpd"

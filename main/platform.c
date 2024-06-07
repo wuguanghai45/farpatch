@@ -439,6 +439,7 @@ extern void gdb_net_task();
 
 void app_main(void)
 {
+	ESP_LOGI(__func__, "Free heap %" PRId32, esp_get_free_heap_size());
 	esp_err_t ret;
 
 	ESP_LOGI(__func__, "starting farpatch");
