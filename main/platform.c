@@ -505,7 +505,7 @@ void app_main(void)
 	platform_init();
 
 	uart_init();
-	rtt_init();
+	// rtt_init();
 
 	xTaskCreate(&gdb_net_task, "gdb_net", 2000, NULL, 1, NULL);
 
