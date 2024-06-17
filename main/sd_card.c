@@ -16,6 +16,7 @@
 #define MAX_FILE_SIZE (20 * 1024 * 1024) // 20MB
 #define QUEUE_SIZE 10
 #define FILE_WRITE_BUFFER_SIZE 1024 * 3
+#define WRITE_INTERVAL_MS 5000  // 定时写入间隔（毫秒）
 
 #define CONFIG_SD_CARD_PIN_CLK 18
 #define CONFIG_SD_CARD_PIN_CMD 17
@@ -149,68 +150,74 @@ uint8_t get_file_counter() {
     return file_counter;
 }
 
+static void write_buffer_to_file(size_t *buffer_pos, char *write_buffer, size_t *cache_log_file_size) {
+    char path[EXAMPLE_MAX_CHAR_SIZE];
+
+    if (*buffer_pos > 0) {
+        snprintf(path, sizeof(path), MOUNT_POINT "/uart_%d.log", file_counter);
+
+        if (*cache_log_file_size == 0) {
+            struct stat st;
+            if (stat(path, &st) == 0) {
+                *cache_log_file_size = st.st_size;
+            } else {
+                *cache_log_file_size = 0;
+            }
+        }
+
+        if (*cache_log_file_size > MAX_FILE_SIZE) {
+            file_counter++;
+            if (file_counter > 100) {
+                file_counter = 0;
+            }
+            *cache_log_file_size = 0;
+            write_file_count();
+            check_and_remove_file_count();
+            snprintf(path, sizeof(path), MOUNT_POINT "/uart_%d.log", file_counter);
+        }
+
+        FILE *f = fopen(path, "a");
+        if (f == NULL) {
+            ESP_LOGE(TAG, "无法打开文件: %s", path);
+            *buffer_pos = 0;
+            return;
+        }
+
+        size_t written = fwrite(write_buffer, 1, *buffer_pos, f);
+        if (written != *buffer_pos) {
+            ESP_LOGE(TAG, "写入数据到文件失败: %s", path);
+        } else {
+            *cache_log_file_size += written;
+        }
+
+        *buffer_pos = 0;
+        fclose(f);
+    }
+}
+
 static void file_write_task(void *pvParameters) {
     file_write_msg_t msg;
-    char path[EXAMPLE_MAX_CHAR_SIZE];
-    struct stat st;
-    size_t cache_log_file_size = 0;
     static size_t buffer_pos = 0;
     static char write_buffer[FILE_WRITE_BUFFER_SIZE];
+    static size_t cache_log_file_size = 0;
+    TickType_t last_wake_time = xTaskGetTickCount();
 
     while (1) {
-        if (xQueueReceive(file_queue, &msg, portMAX_DELAY)) {
-            // 处理缓冲区溢出的情况
+        if (xQueueReceive(file_queue, &msg, WRITE_INTERVAL_MS / portTICK_PERIOD_MS)) {
             if (buffer_pos + msg.len > FILE_WRITE_BUFFER_SIZE) {
-                // 生成文件路径
-                snprintf(path, sizeof(path), MOUNT_POINT "/uart_%d.log", file_counter);
-
-                // 获取文件大小
-                if (cache_log_file_size == 0) {
-                    if (stat(path, &st) == 0) {
-                        cache_log_file_size = st.st_size;
-                    } else {
-                        cache_log_file_size = 0;
-                    }
-                }
-
-                // 检查文件大小并切换文件
-                if (cache_log_file_size > MAX_FILE_SIZE) {
-                    file_counter++;
-                    if (file_counter > 100) {
-                        file_counter = 0;
-                    }
-                    cache_log_file_size = 0;
-                    write_file_count();
-                    check_and_remove_file_count();
-                    snprintf(path, sizeof(path), MOUNT_POINT "/uart_%d.log", file_counter);
-                }
-
-                // 打开文件
-                FILE *f = fopen(path, "a");
-                if (f == NULL) {
-                    ESP_LOGE(TAG, "无法打开文件: %s", path);
-                    buffer_pos = 0;  // 清空缓冲区
-                    free(msg.data);  // 确保释放内存
-                    continue;
-                }
-
-                // 写入缓冲区数据
-                size_t written = fwrite(write_buffer, 1, buffer_pos, f);
-                if (written != buffer_pos) {
-                    ESP_LOGE(TAG, "写入数据到文件失败: %s", path);
-                } else {
-                    cache_log_file_size += written;
-                }
-
-                // 清空缓冲区
-                buffer_pos = 0;
-                fclose(f);
+                write_buffer_to_file(&buffer_pos, write_buffer, &cache_log_file_size);
             }
 
-            // 将消息数据复制到缓冲区
             memcpy(write_buffer + buffer_pos, msg.data, msg.len);
             buffer_pos += msg.len;
-            free(msg.data);  // 确保释放内存
+            free(msg.data);
+        } else {
+            // 检查定时写入条件
+            TickType_t current_time = xTaskGetTickCount();
+            if (current_time - last_wake_time >= WRITE_INTERVAL_MS / portTICK_PERIOD_MS) {
+                write_buffer_to_file(&buffer_pos, write_buffer, &cache_log_file_size);
+                last_wake_time = current_time;
+            }
         }
     }
 }
