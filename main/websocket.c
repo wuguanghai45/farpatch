@@ -11,9 +11,9 @@ struct websocket_session {
 	uint32_t cookie;
 };
 
-static struct websocket_session debug_handles[4];
-static struct websocket_session rtt_handles[1];
-static struct websocket_session uart_handles[4];
+static struct websocket_session debug_handles[8];
+static struct websocket_session rtt_handles[8];
+static struct websocket_session uart_handles[8];
 extern httpd_handle_t http_daemon;
 
 struct websocket_config {
