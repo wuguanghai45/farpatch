@@ -1156,7 +1156,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 
 			// Re-create the AP, which will shut it down if it doesn't need
 			// to run anymorre.
-			wifi_configure_softap(false);
+			// wifi_configure_softap(false);
 
 			break;
 		}
