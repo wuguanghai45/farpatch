@@ -285,13 +285,18 @@ void uart_send_break(void)
 	uart_set_baudrate(TARGET_UART_IDX, baud); // restore baudrate
 }
 
-void uart_init(void)
+void uart_hw_init(void)
 {
 #if !defined(CONFIG_TARGET_UART_NONE)
 	ESP_LOGI(__func__, "configuring UART%d for target", TARGET_UART_IDX);
 
 	// Start UART tasks
 	xTaskCreate(uart_hw_task, "uart_hw_task", 1024 * 5, NULL, 1, NULL);
-	xTaskCreate(uart_net_task, "uart_net_task", 6 * 1024, NULL, 1, NULL);
+	// xTaskCreate(uart_net_task, "uart_net_task", 6 * 1024, NULL, 1, NULL);
 #endif
+}
+
+void uart_net_init(void)
+{
+	xTaskCreate(uart_net_task, "uart_net_task", 6 * 1024, NULL, 1, NULL);
 }
