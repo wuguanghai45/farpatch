@@ -1101,7 +1101,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 					clear_sta_config();
 
 					// Start the AP in case we're in a new place with no known APs
-					wifi_configure_softap(true);
+					// wifi_configure_softap(true);
 
 					// TODO: Try again after a set amount of time
 					xTimerStart(WILMA_RETRY_TIMER, (TickType_t)0);
@@ -1200,7 +1200,7 @@ void wilma_set_ap_enabled(bool enabled)
 	ESP_ERROR_CHECK(nvs_commit(WILMA_NVS_HANDLE));
 
 	// Re-call init, which will enable or disable the AP as necessary.
-	wifi_configure_softap(false);
+	// wifi_configure_softap(false);
 }
 
 static void cfg_ap_set_ssid(const char *ssid)
@@ -1347,7 +1347,7 @@ static esp_err_t connect_to_station_index(size_t index)
 {
 	if (!WILMA_CONNECTION_LIST_COUNT) {
 		ESP_LOGD(TAG, "No stations in connection list, starting AP mode");
-		wifi_configure_softap(true);
+		// wifi_configure_softap(true);
 		return ESP_FAIL;
 	}
 
@@ -1479,8 +1479,8 @@ static void wilma_thread(void *data)
 	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
 	/* Initialize AP */
-	ESP_LOGD(TAG, "initializing softap");
-	wifi_configure_softap(false);
+	// ESP_LOGD(TAG, "initializing softap");
+	// wifi_configure_softap(false);
 
 	/* Initialize STA */
 	ESP_LOGD(TAG, "initializing station mode");
@@ -1492,7 +1492,7 @@ static void wilma_thread(void *data)
     BLUFI_INFO("BLUFI VERSION %04x\n", esp_blufi_get_version());
 
 	/* Set sta as the default interface */
-	esp_netif_set_default_netif(ESP_NETIF_AP);
+	// esp_netif_set_default_netif(ESP_NETIF_AP);
 
 	wilma_scan_then_connect();
 
@@ -1518,7 +1518,7 @@ static void wilma_thread(void *data)
 			nvs_erase_all(WILMA_NVS_HANDLE);
 			(void)nvs_commit(WILMA_NVS_HANDLE);
 			clear_sta_config();
-			wifi_configure_softap(true);
+			// wifi_configure_softap(true);
 			break;
 
 		case WM_ORDER_CONNECT_STA: {
@@ -1566,7 +1566,7 @@ static void wilma_thread(void *data)
 			ESP_LOGD(TAG, "Shutting down");
 			esp_wifi_stop();
 			esp_wifi_deinit();
-			esp_netif_destroy(ESP_NETIF_AP);
+			// esp_netif_destroy(ESP_NETIF_AP);
 			esp_netif_destroy(ESP_NETIF_STA);
 			esp_event_handler_instance_unregister(IP_EVENT, ESP_EVENT_ANY_ID, WILMA_INSTANCE_GOT_IP);
 			esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, WILMA_INSTANCE_ANY_ID);
