@@ -237,13 +237,13 @@ esp_err_t init_sd_card() {
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
 
-    slot_config.width = 4;
+    slot_config.width = 1;
     slot_config.clk = CONFIG_SD_CARD_PIN_CLK;
     slot_config.cmd = CONFIG_SD_CARD_PIN_CMD;
     slot_config.d0 = CONFIG_SD_CARD_PIN_D0;
-    slot_config.d1 = CONFIG_SD_CARD_PIN_D1;
-    slot_config.d2 = CONFIG_SD_CARD_PIN_D2;
-    slot_config.d3 = CONFIG_SD_CARD_PIN_D3;
+    // slot_config.d1 = CONFIG_SD_CARD_PIN_D1;
+    // slot_config.d2 = CONFIG_SD_CARD_PIN_D2;
+    // slot_config.d3 = CONFIG_SD_CARD_PIN_D3;
     slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
     ESP_LOGI(TAG, "挂载文件系统");
