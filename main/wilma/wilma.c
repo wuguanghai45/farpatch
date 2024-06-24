@@ -209,6 +209,7 @@ static int gl_sta_ssid_len;
 static wifi_sta_list_t gl_sta_list;
 static bool gl_sta_is_connecting = false;
 static esp_blufi_extra_info_t gl_sta_conn_info;
+char ip_address_str[16];  // 假设IPv4地址最长为15个字符（例如："255.255.255.255"）
 
 static void log_connection(const uint8_t ssid[32], const uint8_t password[64])
 {
@@ -339,6 +340,10 @@ static void bluefi_event_callback(esp_blufi_cb_event_t event, esp_blufi_cb_param
             info.sta_ssid = gl_sta_ssid;
             info.sta_ssid_len = gl_sta_ssid_len;
             esp_blufi_send_wifi_conn_report(mode, gl_sta_got_ip ? ESP_BLUFI_STA_CONN_SUCCESS : ESP_BLUFI_STA_NO_IP, softap_get_current_connection_number(), &info);
+			size_t msg_len = strlen(ip_address_str);
+			esp_blufi_send_custom_data((uint8_t *)ip_address_str, msg_len);
+
+			BLUFI_INFO("sta_got_ip %d\n", gl_sta_got_ip);
         } else if (gl_sta_is_connecting) {
             esp_blufi_send_wifi_conn_report(mode, ESP_BLUFI_STA_CONNECTING, softap_get_current_connection_number(), &gl_sta_conn_info);
         } else {
@@ -1008,6 +1013,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 			gl_sta_is_connecting = false;
 			wifi_event_sta_connected_t *event = (wifi_event_sta_connected_t *)event_data;
 			ESP_LOGD(TAG, "WIFI_EVENT_STA_CONNECTED");
+			memcpy(gl_sta_bssid, event->bssid, 6);
 			memcpy(gl_sta_ssid, event->ssid, sizeof(gl_sta_ssid));
 			gl_sta_ssid_len = event->ssid_len;
 
@@ -1140,11 +1146,14 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 	} else if (event_base == IP_EVENT) {
 		switch (event_id) {
 		case IP_EVENT_STA_GOT_IP: {
-			ESP_LOGD(TAG, "IP_EVENT_STA_GOT_IP");
+			ESP_LOGI(TAG, "IP_EVENT_STA_GOT_IP");
 			ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-			ESP_LOGD(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+			gl_sta_got_ip = true;
 			WILMA_RETRY_NUM = 0;
+			// 将获取到的IP地址转换为字符串并存储
+			sprintf(ip_address_str, IPSTR, IP2STR(&event->ip_info.ip));
 
+			ESP_LOGI(TAG, "got ip: %s", ip_address_str);
 			// Stop a queued SSID scan
 			xTimerStop(WILMA_RETRY_TIMER, (TickType_t)0);
 
