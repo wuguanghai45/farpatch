@@ -492,8 +492,8 @@ static void start_scan(void)
 	uxBits = xEventGroupGetBits(WILMA_EVENT_GROUP);
 	if (!(uxBits & WILMA_SCAN_BIT)) {
 		xEventGroupSetBits(WILMA_EVENT_GROUP, WILMA_SCAN_BIT);
-		ESP_ERROR_CHECK(esp_wifi_disconnect());
-		ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_config, false));
+		esp_wifi_disconnect();
+		esp_wifi_scan_start(&scan_config, false);
 	}
 }
 
