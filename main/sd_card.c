@@ -237,17 +237,35 @@ esp_err_t init_sd_card() {
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
 
-    slot_config.width = 1;
+    // 尝试4线模式初始化
+    slot_config.width = 4;
     slot_config.clk = CONFIG_SD_CARD_PIN_CLK;
     slot_config.cmd = CONFIG_SD_CARD_PIN_CMD;
     slot_config.d0 = CONFIG_SD_CARD_PIN_D0;
-    // slot_config.d1 = CONFIG_SD_CARD_PIN_D1;
-    // slot_config.d2 = CONFIG_SD_CARD_PIN_D2;
-    // slot_config.d3 = CONFIG_SD_CARD_PIN_D3;
+    slot_config.d1 = CONFIG_SD_CARD_PIN_D1;
+    slot_config.d2 = CONFIG_SD_CARD_PIN_D2;
+    slot_config.d3 = CONFIG_SD_CARD_PIN_D3;
     slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
-    ESP_LOGI(TAG, "挂载文件系统");
+    ESP_LOGI(TAG, "挂载文件系统(4线模式)");
     ret = esp_vfs_fat_sdmmc_mount(MOUNT_POINT, &host, &slot_config, &mount_config, &card);
+
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "4线模式挂载文件系统失败, 尝试1线模式");
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(TAG, "4线模式挂载文件系统失败。");
+        } else {
+            ESP_LOGE(TAG, "4线模式初始化SD卡失败: %s", esp_err_to_name(ret));
+        }
+
+        // 尝试1线模式初始化
+        slot_config.width = 1;
+        slot_config.d1 = -1;
+        slot_config.d2 = -1;
+        slot_config.d3 = -1;
+
+        ret = esp_vfs_fat_sdmmc_mount(MOUNT_POINT, &host, &slot_config, &mount_config, &card);
+    }
 
     if (ret != ESP_OK) {
         if (ret == ESP_FAIL) {
@@ -257,6 +275,7 @@ esp_err_t init_sd_card() {
         }
         return ret;
     }
+
     ESP_LOGI(TAG, "文件系统已挂载");
 
     sdmmc_card_print_info(stdout, card);
