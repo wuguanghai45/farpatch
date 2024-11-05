@@ -51,7 +51,7 @@ static esp_err_t connect_to_station_index(size_t index);
 #define WILMA_MAX_CANDIDATE_STATIONS 4
 
 /* @brief The number of times to retry connecting to an AP before moving on to the next one */
-#define RETRIES_BEFORE_CONTINUING 2
+#define RETRIES_BEFORE_CONTINUING 65535
 
 /* FreeRTOS event group to signal when we are connected*/
 static const char *TAG = "wilma";
@@ -1075,7 +1075,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 			} else if (WILMA_RETRY_NUM < RETRIES_BEFORE_CONTINUING) {
 				WILMA_RETRY_NUM++;
 				ESP_LOGI(TAG, "Trying again to connect to AP (try %d/%d)", WILMA_RETRY_NUM, RETRIES_BEFORE_CONTINUING);
-				ESP_ERROR_CHECK(esp_wifi_connect());
+				esp_wifi_connect();
 				// example_wifi_connect();
 				// esp_err_t err = esp_wifi_connect();
 				// switch (err) {
